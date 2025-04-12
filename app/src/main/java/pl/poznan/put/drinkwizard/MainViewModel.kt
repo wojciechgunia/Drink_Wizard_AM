@@ -1,6 +1,11 @@
 package pl.poznan.put.drinkwizard
 
 import android.app.Application
+import android.os.CountDownTimer
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CoroutineScope
@@ -11,6 +16,90 @@ import pl.poznan.put.drinkwizard.data.RecipeListItem
 
 class MainViewModel(app: Application): AndroidViewModel(app) {
     private val repo = Repository(app.applicationContext)
+
+    var selectedRecipe by mutableStateOf("Wybierz opcję")
+        private set
+
+    var isViewChange by mutableStateOf(false)
+        private set
+
+    var isViewList by mutableStateOf(true)
+        private set
+
+    var isWidgetVisible by mutableStateOf(false)
+        private set
+
+    var setWidgetTime by mutableStateOf("0")
+        private set
+
+    var widgetLastTime = "0"
+        private set
+
+    var timerSeconds by mutableIntStateOf(0)
+        private set
+
+    var isRunning by mutableStateOf(false)
+        private set
+
+    var timerState by mutableStateOf(TimerState.Stopped)
+        private set
+
+    var countDownTimer: CountDownTimer? by mutableStateOf(null)
+        private set
+
+    var shakeState by mutableStateOf(ShakerState.Start)
+        private set
+
+    var resetTimer by mutableStateOf(false)
+        private set
+
+    fun updateSelectedRecipe(value: String) {
+        selectedRecipe = value
+    }
+
+    fun setIsViewChange(visible: Boolean) {
+        isViewChange = visible
+    }
+
+    fun setIsViewList(visible: Boolean) {
+        isViewList = visible
+    }
+
+    fun setWidgetVisibility(visible: Boolean) {
+        isWidgetVisible = visible
+    }
+
+    fun updateSetWidgetTime(value: String) {
+        setWidgetTime = value
+    }
+
+    fun updateWidgetLastTime(value: String) {
+        widgetLastTime = value
+    }
+
+    fun setReset(value: Boolean) {
+        resetTimer = value
+    }
+
+    fun updateTimerSeconds(value: Int) {
+        timerSeconds = value
+    }
+
+    fun setIsRunning(visible: Boolean) {
+        isRunning = visible
+    }
+
+    fun updateTimerState(value: TimerState) {
+        timerState = value
+    }
+
+    fun updateCountDownTimer(value: CountDownTimer) {
+        countDownTimer = value
+    }
+
+    fun updateShakeState(value: ShakerState) {
+        shakeState = value
+    }
 
     fun getRecipesList(): Flow<List<RecipeListItem>> {
         return repo.getRecipesList()
@@ -23,12 +112,6 @@ class MainViewModel(app: Application): AndroidViewModel(app) {
     fun editNote(name: String, note: String) {
         CoroutineScope(viewModelScope.coroutineContext).launch {
             repo.editNote(name, note)
-        }
-    }
-
-    fun insertRecipe(recipe: Recipe) {
-        CoroutineScope(viewModelScope.coroutineContext).launch {
-            repo.insertAll(listOf(recipe))
         }
     }
 

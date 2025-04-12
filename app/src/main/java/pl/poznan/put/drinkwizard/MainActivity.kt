@@ -6,6 +6,7 @@ import android.content.res.Configuration
 import android.os.Bundle
 import android.os.CountDownTimer
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -17,7 +18,6 @@ import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
@@ -26,7 +26,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Button
@@ -41,7 +40,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
@@ -61,6 +59,7 @@ import kotlinx.coroutines.delay
 import pl.poznan.put.drinkwizard.data.Recipe
 import pl.poznan.put.drinkwizard.data.RecipeListItem
 import pl.poznan.put.drinkwizard.ui.theme.DrinkWizardTheme
+import java.util.Locale
 import kotlin.getValue
 
 class MainActivity : ComponentActivity() {
@@ -105,14 +104,18 @@ fun AppNavHome(navController: NavHostController, mainVm: MainViewModel, isTablet
     if(isTablet)
         isBigger = 1.8f
     NavHost(navController, startDestination = "list") {
-        composable("list") { RecipesList(mainVm, navController, isBigger = isBigger) }
-        composable("recipe/{recipeName}") { backStackEntry ->
-            val recipeName = backStackEntry.arguments?.getString("recipeName") ?: "Brak Nazwy"
-            RecipeInfo(mainVm, recipeName, navController, isBigger = isBigger)
+        composable("list") {
+            RecipesList(mainVm, navController, isBigger = isBigger)
         }
-        composable("timer/{time}") { backStackEntry ->
-            val time = backStackEntry.arguments?.getString("time") ?: "0"
-            TimerScreen(time, isBigger = isBigger)
+        composable("recipe") { RecipeInfo(mainVm, navController, isBigger = isBigger) }
+        composable("timer") {
+            if(mainVm.setWidgetTime != mainVm.widgetLastTime)
+            {
+                mainVm.setReset(true)
+                mainVm.updateWidgetLastTime(mainVm.setWidgetTime)
+            }
+            TimerScreen(mainVm, isBigger = isBigger, navController = navController)
+            mainVm.setReset(false)
         }
     }
 }
@@ -160,6 +163,12 @@ fun HomeScreen(navController: NavHostController, mainVm: MainViewModel, isTablet
         navController.navigate("home-tab") {
             popUpTo("home") { inclusive = true }
         }
+        if(mainVm.isViewList)
+        {
+            mainVm.updateSelectedRecipe("Wybierz opcję")
+        }
+
+
     }
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -178,15 +187,11 @@ fun HomeScreen(navController: NavHostController, mainVm: MainViewModel, isTablet
 fun HomeTabScreen(navController: NavHostController, mainVm: MainViewModel) {
     val configuration = LocalConfiguration.current
     if (configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
+        mainVm.setIsViewChange(true)
         navController.navigate("home") {
             popUpTo("home-tab") { inclusive = true }
         }
     }
-    var selectedRecipe by remember { mutableStateOf("Wybierz opcję") }
-    var isWidgetVisible by remember { mutableStateOf(false) }
-    var setWidgetTime by remember { mutableStateOf("0") }
-    var widgetLastTime = "0"
-    var reset by remember { mutableStateOf(false) }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -210,7 +215,7 @@ fun HomeTabScreen(navController: NavHostController, mainVm: MainViewModel) {
                         .fillMaxHeight()
                         .weight(11f)
                 ) {
-                    RecipesList(mainVm, null, true, onButtonClick = { selectedRecipe = it }, isBigger = 1.2f)
+                    RecipesList(mainVm, null, true, isBigger = 1.2f)
                 }
 
                 Column(
@@ -218,39 +223,32 @@ fun HomeTabScreen(navController: NavHostController, mainVm: MainViewModel) {
                         .fillMaxHeight()
                         .weight(16f)
                 ) {
-                    if(selectedRecipe == "Wybierz opcję") {
+                    if(mainVm.selectedRecipe == "Wybierz opcję") {
                         Column(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.Top,
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(text = selectedRecipe, fontSize = 22.sp)
+                            Text(text = mainVm.selectedRecipe, fontSize = 22.sp)
                         }
 
                     } else {
                         RecipeInfo(
                             mainVm,
-                            selectedRecipe,
                             isTablet = true,
-                            onButtonClick = { isWidgetVisible = it },
-                            onButtonClick2 = { setWidgetTime = it },
                             isBigger = 1.2f
                         )
                     }
                 }
             }
         }
-        if(setWidgetTime != widgetLastTime)
+        if(mainVm.setWidgetTime != mainVm.widgetLastTime)
         {
-            reset = true
-            widgetLastTime = setWidgetTime
+            mainVm.setReset(true)
+            mainVm.updateWidgetLastTime(mainVm.setWidgetTime)
         }
         SlideInWidget(
-            isVisible = isWidgetVisible,
-            setTime = setWidgetTime,
-            onClose = { isWidgetVisible = false },
-            onReset = { reset = it },
-            reset = reset
+            mainVm
         )
     }
 }
@@ -287,16 +285,31 @@ fun RecipesList(
     mainVm: MainViewModel,
     navController: NavController? = null,
     isTablet: Boolean = false,
-    onButtonClick: ((String) -> Unit)? = null,
     isBigger: Float = 1.0f
 )
 {
+    if(mainVm.selectedRecipe != "Wybierz opcję" && navController != null && mainVm.isViewChange) {
+        mainVm.setIsViewList(false)
+        navController.popBackStack()
+        navController.navigate("list") {
+            launchSingleTop = true
+        }
+        navController.navigate("recipe") {
+            launchSingleTop = true
+        }
+        if(mainVm.isWidgetVisible) {
+            navController.navigate("timer") {
+                launchSingleTop = true
+            }
+        }
+        mainVm.setIsViewChange(false)
+    }
     val recipesList = mainVm.getRecipesList().collectAsState(initial = emptyList())
     Column (
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        RecipesLazyColumn(recipesList.value, navController, isTablet,onButtonClick, isBigger)
+        RecipesLazyColumn(recipesList.value, navController, isTablet, isBigger, mainVm)
     }
 }
 
@@ -305,14 +318,14 @@ fun RecipesLazyColumn(
     recipesList: List<RecipeListItem>,
     navController: NavController?,
     isTablet: Boolean,
-    onButtonClick: ((String) -> Unit)?,
-    isBigger: Float
+    isBigger: Float,
+    mainVm: MainViewModel
 ) {
     LazyColumn (modifier = Modifier
         .fillMaxSize()
         .padding(10.dp * isBigger)){
         items(items = recipesList, key = { it.uid }) { recipe ->
-            RecipesRow(recipe, navController, isTablet,onButtonClick,isBigger)
+            RecipesRow(recipe, navController, isTablet,isBigger, mainVm)
         }
     }
 }
@@ -323,8 +336,8 @@ fun RecipesRow(
     recipeItem: RecipeListItem,
     navController: NavController?,
     isTablet: Boolean,
-    onButtonClick: ((String) -> Unit)?,
-    isBigger: Float
+    isBigger: Float,
+    mainVm: MainViewModel
 ) {
     val imageResId = LocalContext.current.resources.getIdentifier(recipeItem.picture, "drawable", LocalContext.current.packageName)
     Surface (
@@ -334,11 +347,12 @@ fun RecipesRow(
             .padding(vertical = 10.dp * isBigger)
             .border(1.dp * isBigger, Color.LightGray, shape = RoundedCornerShape(10.dp * isBigger))
             .clickable {
+                mainVm.updateSelectedRecipe(recipeItem.name)
                 if (navController != null && !isTablet) {
-                    navController.navigate("recipe/${recipeItem.name}")
-                } else if (onButtonClick != null) {
-                    onButtonClick(recipeItem.name)
+                    navController.navigate("recipe")
+                    mainVm.setIsViewList(false)
                 }
+
             },
         shape = RoundedCornerShape(10.dp * isBigger),
         tonalElevation = 1.dp * isBigger,
@@ -382,26 +396,28 @@ fun RecipesRow(
 @Composable
 fun RecipeInfo(
     mainVm: MainViewModel,
-    recipeName: String,
     navController: NavHostController? = null,
     isTablet: Boolean = false,
-    onButtonClick: ((Boolean) -> Unit)? = null,
-    onButtonClick2: ((String) -> Unit)? = null,
-    isBigger: Float = 1.0f,
+    isBigger: Float = 1.0f
 ) {
-    val recipe = mainVm.getRecipeInfo(recipeName).collectAsState(initial = Recipe(name="", ingredients = "", steps = "", shakingTime = 0, note= "", picture = "")).value
-    RecipeShow(mainVm, recipe, navController, isTablet, onButtonClick, onButtonClick2, isBigger)
+    if(navController != null) {
+        BackHandler {
+            mainVm.setIsViewList(true)
+            navController.popBackStack()
+        }
+    }
+    val recipe = mainVm.getRecipeInfo(mainVm.selectedRecipe).collectAsState(initial = Recipe(name="", ingredients = "", steps = "", shakingTime = 0, note= "", picture = "")).value
+    if(recipe.name != "")
+        RecipeShow(mainVm, recipe, navController, isTablet, isBigger)
 }
 
 @SuppressLint("DiscouragedApi")
 @Composable
 fun RecipeShow(
-    mainVm: MainViewModel?,
+    mainVm: MainViewModel,
     recipe: Recipe,
     navController: NavHostController?,
     isTablet: Boolean,
-    onButtonClick: ((Boolean) -> Unit)?,
-    onButtonClick2: ((String) -> Unit)?,
     isBigger: Float,
 ) {
     val imageResId = LocalContext.current.resources.getIdentifier(recipe.picture, "drawable", LocalContext.current.packageName)
@@ -463,11 +479,10 @@ fun RecipeShow(
         item {
             Button(
                 onClick = {
+                        mainVm.updateSetWidgetTime(recipe.shakingTime.toString())
+                        mainVm.setWidgetVisibility(true)
                         if(navController != null && !isTablet) {
-                            navController.navigate("timer/${recipe.shakingTime}")
-                        } else if(onButtonClick != null && onButtonClick2 != null){
-                            onButtonClick2(recipe.shakingTime.toString())
-                            onButtonClick(true)
+                            navController.navigate("timer")
                         }
                     },
                 modifier = Modifier.padding(15.dp * isBigger).size(width = 220.dp * isBigger, height = 55.dp * isBigger),
@@ -557,9 +572,9 @@ fun EditNoteComponent(recipe: Recipe, isBigger: Float, mainVm: MainViewModel?) {
 
 //===================================== Timer Screen ===============================================
 @Composable
-fun SlideInWidget(isVisible: Boolean, onClose: () -> Unit, onReset: (Boolean) -> Unit, setTime: String, reset: Boolean) {
+fun SlideInWidget(mainVm: MainViewModel) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp * 0.5f
-    val targetOffsetX = if (isVisible) screenWidth else screenWidth * 2
+    val targetOffsetX = if (mainVm.isWidgetVisible) screenWidth else screenWidth * 2
     val animatedOffsetX by animateDpAsState(
         targetValue = targetOffsetX,
         animationSpec = tween(durationMillis = 1500), label = "slide"
@@ -574,26 +589,27 @@ fun SlideInWidget(isVisible: Boolean, onClose: () -> Unit, onReset: (Boolean) ->
             .padding(16.dp),
     ) {
         Button(
-            onClick = onClose,
+            onClick = {mainVm.setWidgetVisibility(false)},
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xAA35A3C0)),
             shape = RoundedCornerShape(12.dp),
             border = BorderStroke(1.dp, Color.White)) {
             Text("X", fontSize = 20.sp, color = Color.White)
         }
         Spacer(modifier = Modifier.height(16.dp))
-        TimerScreen(setTime, 0.5f, reset, isBigger = 1.2f, true)
-        onReset(false)
+        TimerScreen(mainVm, 0.5f, 1.2f, true)
+        mainVm.setReset(false)
     }
 }
 
 @Composable
-fun TimerScreen(time: String, screenWidth: Float = 1.0f, reset: Boolean = false, isBigger: Float = 1.0f, isWidget: Boolean = false) {
-    var timerSeconds by remember { mutableIntStateOf(time.toInt()) }
-    var isRunning by remember { mutableStateOf(false) }
-    var timerState by remember { mutableStateOf(TimerState.Stopped) }
-    var countDownTimer: CountDownTimer? by remember { mutableStateOf(null) }
-    var shakeState by remember { mutableStateOf(ShakerState.Start) }
+fun TimerScreen(mainVm: MainViewModel, screenWidth: Float = 1.0f, isBigger: Float = 1.0f, isWidget: Boolean = false, navController: NavController? = null) {
 
+    if(navController != null) {
+        BackHandler {
+            mainVm.setWidgetVisibility(false)
+            navController.popBackStack()
+        }
+    }
     var colorText = MaterialTheme.colorScheme.onBackground
     if(isWidget)
     {
@@ -603,44 +619,46 @@ fun TimerScreen(time: String, screenWidth: Float = 1.0f, reset: Boolean = false,
     fun formatTime(seconds: Int): String {
         val minutes = seconds / 60
         val remainingSeconds = seconds % 60
-        return String.format("%02d:%02d", minutes, remainingSeconds)
+        return String.format(Locale.GERMAN, "%02d:%02d", minutes, remainingSeconds)
     }
 
     fun startTimer(seconds: Int) {
-        countDownTimer?.cancel()
-        countDownTimer = object : CountDownTimer((seconds * 1000).toLong(), 1000) {
+        mainVm.countDownTimer?.cancel()
+        mainVm.updateTimerSeconds(mainVm.setWidgetTime.toInt())
+        var countDownTimer = object : CountDownTimer((seconds * 1000).toLong(), 1000) {
             override fun onTick(millisUntilFinished: Long) {
-                timerSeconds = (millisUntilFinished / 1000).toInt()
+                mainVm.updateTimerSeconds((millisUntilFinished / 1000).toInt())
             }
 
             override fun onFinish() {
-                timerState = TimerState.End
-                isRunning = false
-                timerSeconds = 0
-                shakeState = ShakerState.End
+                mainVm.updateTimerState(TimerState.End)
+                mainVm.setIsRunning(false)
+                mainVm.updateTimerSeconds(0)
+                mainVm.updateShakeState(ShakerState.End)
             }
         }.start()
-        timerState = TimerState.Running
-        isRunning = true
-        shakeState = ShakerState.Shaking
+        mainVm.updateCountDownTimer(countDownTimer)
+        mainVm.updateTimerState(TimerState.Running)
+        mainVm.setIsRunning(true)
+        mainVm.updateShakeState(ShakerState.Shaking)
     }
 
     fun pauseTimer() {
-        countDownTimer?.cancel()
-        timerState = TimerState.Paused
-        isRunning = false
-        shakeState = ShakerState.Start
+        mainVm.countDownTimer?.cancel()
+        mainVm.updateTimerState(TimerState.Paused)
+        mainVm.setIsRunning(false)
+        mainVm.updateShakeState(ShakerState.Start)
     }
 
     fun resetTimer() {
-        countDownTimer?.cancel()
-        timerSeconds = time.toInt()
-        timerState = TimerState.Stopped
-        isRunning = false
-        shakeState = ShakerState.Start
+        mainVm.countDownTimer?.cancel()
+        mainVm.updateTimerSeconds(mainVm.setWidgetTime.toInt())
+        mainVm.updateTimerState(TimerState.Stopped)
+        mainVm.setIsRunning(false)
+        mainVm.updateShakeState(ShakerState.Start)
     }
 
-    if(reset)
+    if(mainVm.resetTimer)
     {
         resetTimer()
     }
@@ -648,7 +666,7 @@ fun TimerScreen(time: String, screenWidth: Float = 1.0f, reset: Boolean = false,
     val infiniteTransition = rememberInfiniteTransition()
     val offsetX by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = if (shakeState == ShakerState.Shaking) 10f else 0f,
+        targetValue = if (mainVm.shakeState == ShakerState.Shaking) 10f else 0f,
         animationSpec = infiniteRepeatable(
             animation = keyframes {
                 durationMillis = 1000
@@ -686,12 +704,12 @@ fun TimerScreen(time: String, screenWidth: Float = 1.0f, reset: Boolean = false,
         var soffsetX = 0.dp
         var srotate = 0f
         var sid = R.drawable.shaker
-        if(shakeState == ShakerState.Start)
+        if(mainVm.shakeState == ShakerState.Start)
         {
             soffsetX = 0.dp
             srotate = 0f
             sid = R.drawable.shaker
-        } else if(shakeState == ShakerState.Shaking) {
+        } else if(mainVm.shakeState == ShakerState.Shaking) {
             soffsetX = offsetX.dp
             srotate = rotate
             sid = R.drawable.shaker_shaking
@@ -715,7 +733,7 @@ fun TimerScreen(time: String, screenWidth: Float = 1.0f, reset: Boolean = false,
         Spacer(modifier = Modifier.height(32.dp * isBigger))
 
         Text(
-            text = formatTime(timerSeconds),
+            text = formatTime(mainVm.timerSeconds),
             fontSize = 48.sp * isBigger,
             fontWeight = FontWeight.Bold,
             color = colorText
@@ -725,10 +743,10 @@ fun TimerScreen(time: String, screenWidth: Float = 1.0f, reset: Boolean = false,
 
         Button(
             onClick = {
-                when (timerState) {
-                    TimerState.Stopped -> startTimer(timerSeconds)
+                when (mainVm.timerState) {
+                    TimerState.Stopped -> startTimer(mainVm.timerSeconds)
                     TimerState.Running -> pauseTimer()
-                    TimerState.Paused -> startTimer(timerSeconds)
+                    TimerState.Paused -> startTimer(mainVm.timerSeconds)
                     TimerState.End -> {}
                 }
             },
@@ -737,7 +755,7 @@ fun TimerScreen(time: String, screenWidth: Float = 1.0f, reset: Boolean = false,
             shape = RoundedCornerShape(8.dp * isBigger),
             border = BorderStroke(1.dp, Color.White)
         ) {
-            when (timerState) {
+            when (mainVm.timerState) {
                 TimerState.Stopped -> {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_play),
@@ -774,7 +792,7 @@ fun TimerScreen(time: String, screenWidth: Float = 1.0f, reset: Boolean = false,
             }
         }
 
-        if (timerState == TimerState.Paused || timerState == TimerState.End) {
+        if (mainVm.timerState == TimerState.Paused || mainVm.timerState == TimerState.End) {
             Button(
                 onClick = { resetTimer() },
                 modifier = Modifier.padding(8.dp * isBigger),
@@ -810,8 +828,8 @@ fun HomeScreenPreview() {
     DrinkWizardTheme {
         //HeaderComp(false)
         //RecipesRow("Ala ma kota")
-        val recipe = Recipe(uid = 0, name = "Mojito", ingredients = "40 ml białego rumu;20 ml soku z limonki;2 łyżeczki cukru trzcinowego;6-8 listków mięty;woda gazowana;kruszony lód", steps = "Do szklanki wrzuć miętę i cukier., a następnie delikatnie ugnieć muddlerem.;Wlej sok z limonki i dopełnij kruszonym lodem.;Dolej rum i delikatnie mieszaj przez 30s.;Uzupełnij wodą gazowaną i udekoruj miętą.", shakingTime = 30, note = "", picture = "mojito.png")
-        RecipeShow(null,recipe,null,false,null,null,1.0f)
+        //val recipe = Recipe(uid = 0, name = "Mojito", ingredients = "40 ml białego rumu;20 ml soku z limonki;2 łyżeczki cukru trzcinowego;6-8 listków mięty;woda gazowana;kruszony lód", steps = "Do szklanki wrzuć miętę i cukier., a następnie delikatnie ugnieć muddlerem.;Wlej sok z limonki i dopełnij kruszonym lodem.;Dolej rum i delikatnie mieszaj przez 30s.;Uzupełnij wodą gazowaną i udekoruj miętą.", shakingTime = 30, note = "", picture = "mojito.png")
+        //RecipeShow(null,recipe,null,false,null,null,1.0f)
         //TimerScreen("30")
         //AddDrinkForm(null, null, 1.0f)
     }
