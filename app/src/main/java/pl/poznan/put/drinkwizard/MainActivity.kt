@@ -54,6 +54,7 @@ import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.delay
 import pl.poznan.put.drinkwizard.data.Recipe
@@ -176,8 +177,8 @@ fun HomeScreen(navController: NavHostController, mainVm: MainViewModel, isTablet
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
-            HeaderComp(isTablet)
             val navController = rememberNavController()
+            HeaderComp(isTablet, navController)
             AppNavHome(navController, mainVm, isTablet)
         }
     }
@@ -203,7 +204,7 @@ fun HomeTabScreen(navController: NavHostController, mainVm: MainViewModel) {
                 .fillMaxWidth()
                 .padding(16.dp))
             {
-                HeaderComp()
+                HeaderComp(true, navController)
             }
             Row(modifier = Modifier
                 .fillMaxSize()
@@ -255,28 +256,76 @@ fun HomeTabScreen(navController: NavHostController, mainVm: MainViewModel) {
 
 @SuppressLint("DiscouragedApi")
 @Composable
-fun HeaderComp(isTablet: Boolean = false) {
+fun HeaderComp(isTablet: Boolean = false, navController: NavHostController? = null) {
     var isBigger = 1.0f
     val configuration = LocalConfiguration.current
     if (isTablet && configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
         isBigger = 1.5f
     }
+    var isHome = false
+    if(navController != null) {
+        val backStackEntry by navController.currentBackStackEntryAsState()
+        val currentRoute = backStackEntry?.destination?.route
+        if(currentRoute == "list")
+            isHome = true
+    }
     val context = LocalContext.current
     val imageId = context.resources.getIdentifier("logo", "drawable", context.packageName)
-    Row (
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(8.dp * isBigger)
-            .padding(bottom = 20.dp * isBigger),
-        horizontalArrangement = Arrangement.Start,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Image(
-            painter = painterResource(id = imageId),
-            contentDescription = "Logo",
-            modifier = Modifier.size(50.dp * isBigger)
-        )
-        Text(text = "Drink Wizard", modifier = Modifier.padding(start = 30.dp * isBigger), fontSize = 28.sp * isBigger, fontWeight = FontWeight.Bold)
+    if(navController == null || configuration.orientation == Configuration.ORIENTATION_LANDSCAPE || isHome) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp * isBigger)
+                .padding(bottom = 20.dp * isBigger),
+            horizontalArrangement = Arrangement.Start,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = painterResource(id = imageId),
+                contentDescription = "Logo",
+                modifier = Modifier.size(50.dp * isBigger)
+            )
+            Text(
+                text = "Drink Wizard",
+                modifier = Modifier.padding(start = 30.dp * isBigger),
+                fontSize = 28.sp * isBigger,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    } else {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp * isBigger)
+                .padding(bottom = 20.dp * isBigger),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Button(
+                onClick = {
+                    navController.popBackStack()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0x00000000)),
+                shape = RoundedCornerShape(8.dp * isBigger),
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.arrow_back),
+                    contentDescription = "wróć",
+                    modifier = Modifier.size(32.dp * isBigger),
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
+            }
+            Text(
+                text = "Drink Wizard",
+                fontSize = 28.sp * isBigger,
+                fontWeight = FontWeight.Bold
+            )
+            Image(
+                painter = painterResource(id = imageId),
+                contentDescription = "Logo",
+                modifier = Modifier.size(50.dp * isBigger)
+            )
+        }
     }
 }
 
@@ -370,7 +419,9 @@ fun RecipesRow(
                     Image(
                         painter = painterResource(id = imageResId),
                         contentDescription = "Drink photo",
-                        modifier = Modifier.size(124.dp * isBigger).padding(end = 20.dp * isBigger)
+                        modifier = Modifier
+                            .size(124.dp * isBigger)
+                            .padding(end = 20.dp * isBigger)
                     )
                 }
             } else {
@@ -434,7 +485,9 @@ fun RecipeShow(
                     Image(
                         painter = painterResource(id = imageResId),
                         contentDescription = "Drink photo",
-                        modifier = Modifier.size(200.dp * isBigger).padding(1.dp * isBigger)
+                        modifier = Modifier
+                            .size(200.dp * isBigger)
+                            .padding(1.dp * isBigger)
                     )
                 }
             }
@@ -485,7 +538,9 @@ fun RecipeShow(
                             navController.navigate("timer")
                         }
                     },
-                modifier = Modifier.padding(15.dp * isBigger).size(width = 220.dp * isBigger, height = 55.dp * isBigger),
+                modifier = Modifier
+                    .padding(15.dp * isBigger)
+                    .size(width = 220.dp * isBigger, height = 55.dp * isBigger),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xAA35A3C0)),
                 shape = RoundedCornerShape(10.dp),
                 border = BorderStroke(1.dp * isBigger, Color.LightGray)

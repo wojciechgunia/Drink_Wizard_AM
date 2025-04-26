@@ -11,11 +11,9 @@ data class Recipe(
     val steps: String,
     val shakingTime: Int,
     val note: String,
-    val picture: String) {
-}
+    val picture: String)
 
 data class RecipeListItem(
     @PrimaryKey(autoGenerate = true) val uid: Int = 0,
     val name: String,
-    val picture: String) {
-}
+    val picture: String)
