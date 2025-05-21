@@ -8,15 +8,16 @@ import androidx.room.RoomDatabase
 @Database(entities = [Recipe::class], version = 1)
 abstract class RecipeDatabase : RoomDatabase() {
     abstract fun recipesDio(): RecipesDao
-}
 
-object RecipesDb {
-    private var db: RecipeDatabase? = null
-    fun getInstance(context: Context): RecipeDatabase {
-
-        if(db == null){
-            db = Room.databaseBuilder(context, RecipeDatabase::class.java, "recipes-database").build()
-        }
-        return db!!
+    companion object {
+        @Volatile private var db: RecipeDatabase? = null
+        fun getInstance(context: Context): RecipeDatabase =
+            db ?: synchronized(this) {
+                db ?: Room.databaseBuilder(
+                    context.applicationContext,
+                    RecipeDatabase::class.java,
+                    "user_db"
+                ).build().also { db = it }
+            }
     }
 }
