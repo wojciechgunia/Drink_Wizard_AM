@@ -1,6 +1,7 @@
 package pl.poznan.put.drinkwizard
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.os.Bundle
@@ -9,6 +10,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -17,6 +20,11 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
@@ -28,13 +36,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,18 +58,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import kotlinx.coroutines.delay
 import pl.poznan.put.drinkwizard.data.Recipe
 import pl.poznan.put.drinkwizard.data.RecipeListItem
 import pl.poznan.put.drinkwizard.ui.theme.DrinkWizardTheme
@@ -65,6 +80,7 @@ import kotlin.getValue
 
 class MainActivity : ComponentActivity() {
     private val mainVm by viewModels<MainViewModel>()
+    @OptIn(ExperimentalMaterial3Api::class)
     @SuppressLint("SourceLockedOrientationActivity")
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(R.style.Theme_DrinkWizard)
@@ -77,6 +93,14 @@ class MainActivity : ComponentActivity() {
                 DrinkWizardTheme {
                     val navController = rememberNavController()
                     AppNavHost(navController, mainVm)
+                    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                    if (mainVm.isSheetOpen) {
+                        AppInfoBottomSheet(
+                            sheetState = sheetState,
+                            isTablet = true,
+                            onDismiss = { mainVm.setWigSheetOpen(false) }
+                        )
+                    }
                 }
             }
         } else {
@@ -84,16 +108,25 @@ class MainActivity : ComponentActivity() {
                 DrinkWizardTheme {
                     val navController = rememberNavController()
                     AppNavHost(navController, mainVm, true)
+                    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                    if (mainVm.isSheetOpen) {
+                        AppInfoBottomSheet(
+                            sheetState = sheetState,
+                            isTablet = true,
+                            onDismiss = { mainVm.setWigSheetOpen(false) }
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+//====================================== Nav Hosts ===============================================
+
 @Composable
 fun AppNavHost(navController: NavHostController, mainVm: MainViewModel, isTablet: Boolean = false) {
     NavHost(navController, startDestination = "home") {
-        composable("splash") { SplashScreen(navController, isTablet) }
         composable("home") { HomeScreen(navController, mainVm, isTablet) }
         composable("home-tab") { HomeTabScreen(navController, mainVm) }
     }
@@ -108,7 +141,16 @@ fun AppNavHome(navController: NavHostController, mainVm: MainViewModel, isTablet
         composable("list") {
             RecipesList(mainVm, navController, isBigger = isBigger)
         }
-        composable("recipe") { RecipeInfo(mainVm, navController, isBigger = isBigger) }
+        composable("recipe") {
+            RecipeInfo(mainVm, navController, isBigger = isBigger)
+            if (mainVm.selectedRecipe != "Wybierz opcję") {
+                val recipe = mainVm.getRecipeInfo(mainVm.selectedRecipe)
+                    .collectAsState(Recipe(0, "", "", "", 0, "", "")).value
+                ShareFabButton(
+                    ingredients = recipe.ingredients, name = recipe.name, isTablet = isTablet
+                )
+            }
+        }
         composable("timer") {
             if(mainVm.setWidgetTime != mainVm.widgetLastTime)
             {
@@ -121,42 +163,9 @@ fun AppNavHome(navController: NavHostController, mainVm: MainViewModel, isTablet
     }
 }
 
-//===================================== Splash Screen ===============================================
-@SuppressLint("DiscouragedApi")
-@Composable
-fun SplashScreen(navController: NavController, isTablet: Boolean = false) {
-    val context = LocalContext.current
-    val imageId = context.resources.getIdentifier("logo", "drawable", context.packageName)
-    LaunchedEffect(Unit) {
-        delay(2000)
-        if(isTablet)
-        {
-            navController.navigate("home-tab") {
-                popUpTo("splash") { inclusive = true }
-            }
-        } else {
-            navController.navigate("home") {
-                popUpTo("splash") { inclusive = true }
-            }
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.White),
-        contentAlignment = Alignment.Center,
-    ) {
-        Image(
-            painter = painterResource(id = imageId),
-            contentDescription = "Logo",
-            modifier = Modifier.size(200.dp)
-        )
-    }
-}
-
 //====================================== Home Screen ===============================================
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(navController: NavHostController, mainVm: MainViewModel, isTablet: Boolean) {
     val configuration = LocalConfiguration.current
@@ -176,9 +185,10 @@ fun HomeScreen(navController: NavHostController, mainVm: MainViewModel, isTablet
     ) {
         Column(
             modifier = Modifier.fillMaxSize()
-        ) {
+        )
+        {
             val navController = rememberNavController()
-            HeaderComp(isTablet, navController)
+            HeaderComp(mainVm, isTablet, navController)
             AppNavHome(navController, mainVm, isTablet)
         }
     }
@@ -204,7 +214,7 @@ fun HomeTabScreen(navController: NavHostController, mainVm: MainViewModel) {
                 .fillMaxWidth()
                 .padding(16.dp))
             {
-                HeaderComp(true, navController)
+                HeaderComp(mainVm, true, navController)
             }
             Row(modifier = Modifier
                 .fillMaxSize()
@@ -251,83 +261,126 @@ fun HomeTabScreen(navController: NavHostController, mainVm: MainViewModel) {
         SlideInWidget(
             mainVm
         )
+        if((mainVm.selectedRecipe != "Wybierz opcję" && !mainVm.isWidgetVisible)){
+            val recipe = mainVm.getRecipeInfo(mainVm.selectedRecipe)
+                .collectAsState(Recipe(0, "", "", "", 0, "", "")).value
+            ShareFabButton(
+                ingredients = recipe.ingredients, name = recipe.name, isTablet = true,
+            )
+        }
     }
+
 }
 
+//====================================== Header component ===============================================
+
+@OptIn(ExperimentalAnimationApi::class)
 @SuppressLint("DiscouragedApi")
 @Composable
-fun HeaderComp(isTablet: Boolean = false, navController: NavHostController? = null) {
+fun HeaderComp(mainVm: MainViewModel, isTablet: Boolean = false, navController: NavHostController? = null) {
     var isBigger = 1.0f
     val configuration = LocalConfiguration.current
     if (isTablet && configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
         isBigger = 1.5f
     }
-    var isHome = false
+    var isHome = true
     if(navController != null) {
         val backStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = backStackEntry?.destination?.route
-        if(currentRoute == "list")
-            isHome = true
+        if(currentRoute == "recipe" || currentRoute == "timer")
+            isHome = false
     }
     val context = LocalContext.current
     val imageId = context.resources.getIdentifier("logo", "drawable", context.packageName)
-    if(navController == null || configuration.orientation == Configuration.ORIENTATION_LANDSCAPE || isHome) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp * isBigger)
-                .padding(bottom = 20.dp * isBigger),
-            horizontalArrangement = Arrangement.Start,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Image(
-                painter = painterResource(id = imageId),
-                contentDescription = "Logo",
-                modifier = Modifier.size(50.dp * isBigger)
-            )
-            Text(
-                text = "Drink Wizard",
-                modifier = Modifier.padding(start = 30.dp * isBigger),
-                fontSize = 28.sp * isBigger,
-                fontWeight = FontWeight.Bold
-            )
+    val isMainScreen = navController == null || configuration.orientation == Configuration.ORIENTATION_LANDSCAPE || isHome
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp * isBigger)
+            .padding(bottom = 20.dp * isBigger),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AnimatedContent(
+            targetState = isMainScreen,
+            transitionSpec = {
+                if (targetState) {
+                    (slideInHorizontally { it } + fadeIn())
+                        .togetherWith(slideOutHorizontally { -it } + fadeOut())
+                } else {
+                    (slideInHorizontally { -it } + fadeIn())
+                        .togetherWith(slideOutHorizontally { it } + fadeOut())
+                }
+            },
+            label = "AnimatedLeftContent"
+        ) { main ->
+            if (main) {
+                Image(
+                    painter = painterResource(id = imageId),
+                    contentDescription = "Logo",
+                    modifier = Modifier
+                        .size(50.dp * isBigger)
+                        .clickable { mainVm.setWigSheetOpen(true) }
+                )
+            } else {
+                Button(
+                    onClick = {
+                        navController?.popBackStack()
+                        if(mainVm.isWidgetVisible && mainVm.selectedRecipe != "Wybierz opcję")
+                        {
+                            mainVm.setWidgetVisibility(!mainVm.isWidgetVisible)
+                        } else if(!mainVm.isWidgetVisible && mainVm.selectedRecipe != "Wybierz opcję") {
+                            mainVm.setIsViewList(true)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0x00000000)),
+                    shape = RoundedCornerShape(8.dp * isBigger),
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.arrow_back),
+                        contentDescription = "wróć",
+                        modifier = Modifier.size(32.dp * isBigger),
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+            }
         }
-    } else {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp * isBigger)
-                .padding(bottom = 20.dp * isBigger),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Button(
-                onClick = {
-                    navController.popBackStack()
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0x00000000)),
-                shape = RoundedCornerShape(8.dp * isBigger),
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.arrow_back),
-                    contentDescription = "wróć",
-                    modifier = Modifier.size(32.dp * isBigger),
-                    tint = MaterialTheme.colorScheme.onBackground
+
+        Text(
+            text = "Drink Wizard",
+            fontSize = 28.sp * isBigger,
+            fontWeight = FontWeight.Bold
+        )
+
+        AnimatedContent(
+            targetState = isMainScreen,
+            transitionSpec = {
+                    if (targetState) {
+                        (slideInHorizontally { it } + fadeIn())
+                            .togetherWith(slideOutHorizontally { -it } + fadeOut())
+                    } else {
+                        (slideInHorizontally { -it } + fadeIn())
+                            .togetherWith(slideOutHorizontally { it } + fadeOut())
+                    }
+            },
+            label = "AnimatedRightContent"
+        ) { main ->
+            if (main) {
+                Spacer(Modifier.width(20.dp * isBigger)) // rezerwacja miejsca
+            } else {
+                Image(
+                    painter = painterResource(id = imageId),
+                    contentDescription = "Logo",
+                    modifier = Modifier
+                        .size(50.dp * isBigger)
+                        .clickable { mainVm.setWigSheetOpen(true) }
                 )
             }
-            Text(
-                text = "Drink Wizard",
-                fontSize = 28.sp * isBigger,
-                fontWeight = FontWeight.Bold
-            )
-            Image(
-                painter = painterResource(id = imageId),
-                contentDescription = "Logo",
-                modifier = Modifier.size(50.dp * isBigger)
-            )
         }
     }
 }
+
+//====================================== Drink List Component ===============================================
 
 @Composable
 fun RecipesList(
@@ -443,7 +496,7 @@ fun RecipesRow(
     }
 }
 
-// ================================= Recipe Info Screen ============================================
+// ================================= Recipe Info Component ============================================
 @Composable
 fun RecipeInfo(
     mainVm: MainViewModel,
@@ -458,8 +511,9 @@ fun RecipeInfo(
         }
     }
     val recipe = mainVm.getRecipeInfo(mainVm.selectedRecipe).collectAsState(initial = Recipe(name="", ingredients = "", steps = "", shakingTime = 0, note= "", picture = "")).value
-    if(recipe.name != "")
+    if(recipe.name != "") {
         RecipeShow(mainVm, recipe, navController, isTablet, isBigger)
+    }
 }
 
 @SuppressLint("DiscouragedApi")
@@ -625,7 +679,45 @@ fun EditNoteComponent(recipe: Recipe, isBigger: Float, mainVm: MainViewModel?) {
     }
 }
 
-//===================================== Timer Screen ===============================================
+@Composable
+fun ShareFabButton(ingredients: String, name: String, isTablet: Boolean) {
+    var isBigger = 1.0f
+    if(isTablet)
+        isBigger = 1.5f
+    val context = LocalContext.current
+    Box(
+        modifier = Modifier.fillMaxSize().padding(top = 24.dp, end = 10.dp).zIndex(2f),
+        contentAlignment = Alignment.TopEnd,
+    ) {
+        FloatingActionButton(
+            onClick = {
+                val message = buildString {
+                    append("Lista składników ($name):\n")
+                    ingredients.split(";").forEach { ingredient ->
+                        append("● $ingredient\n")
+                    }
+                }
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, message)
+                }
+                val chooser = Intent.createChooser(intent, "Udostępnij składniki przez:")
+                context.startActivity(chooser)
+            },
+            modifier = Modifier.size(55.dp * isBigger),
+            containerColor = Color(0xFF35A3C0),
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.share),
+                contentDescription = "Udostępnij",
+                tint = Color.White,
+                modifier = Modifier.size(30.dp * isBigger).background(Color(0xFF35A3C0)),
+            )
+        }
+    }
+}
+
+//===================================== Timer Component ===============================================
 @Composable
 fun SlideInWidget(mainVm: MainViewModel) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp * 0.5f
@@ -641,7 +733,8 @@ fun SlideInWidget(mainVm: MainViewModel) {
             .width(screenWidth)
             .offset(x = animatedOffsetX)
             .background(Color.LightGray, shape = RoundedCornerShape(16.dp))
-            .padding(16.dp),
+            .padding(16.dp)
+            .zIndex(3.0f),
     ) {
         Button(
             onClick = {mainVm.setWidgetVisibility(false)},
@@ -876,16 +969,56 @@ enum class ShakerState {
     Shaking, Start, End
 }
 
-//=========================================== Previews =============================================
-@Preview(showBackground = true, showSystemUi = true)
+//====================================== Bottom AppInfo Component ===============================================
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreenPreview() {
-    DrinkWizardTheme {
-        //HeaderComp(false)
-        //RecipesRow("Ala ma kota")
-        //val recipe = Recipe(uid = 0, name = "Mojito", ingredients = "40 ml białego rumu;20 ml soku z limonki;2 łyżeczki cukru trzcinowego;6-8 listków mięty;woda gazowana;kruszony lód", steps = "Do szklanki wrzuć miętę i cukier., a następnie delikatnie ugnieć muddlerem.;Wlej sok z limonki i dopełnij kruszonym lodem.;Dolej rum i delikatnie mieszaj przez 30s.;Uzupełnij wodą gazowaną i udekoruj miętą.", shakingTime = 30, note = "", picture = "mojito.png")
-        //RecipeShow(null,recipe,null,false,null,null,1.0f)
-        //TimerScreen("30")
-        //AddDrinkForm(null, null, 1.0f)
+fun AppInfoBottomSheet(
+    sheetState: SheetState,
+    isTablet: Boolean,
+    onDismiss: () -> Unit
+) {
+    var isBigger = 1.0f
+    val configuration = LocalConfiguration.current
+    if (isTablet && configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
+        isBigger = 1.5f
+    }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(28.dp * isBigger)
+                .fillMaxWidth()
+        ) {
+            Text(buildAnnotatedString {
+                withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                    append("Autor: ")
+                }
+                append("Wojciech Gunia")
+            }, fontSize = 16.sp * isBigger, style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(buildAnnotatedString {
+                withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                    append("Wersja: ")
+                }
+                append("1.1.0")
+            }, fontSize = 16.sp * isBigger, style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            Row {
+                Text(
+                    buildAnnotatedString {
+                        withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                            append("O aplikacji: ")
+                        }
+                        append("Aplikacja z przepisami popularnych drinków nie tylko dla doświadczonych barmanów.")
+                    },
+                    fontSize = 16.sp * isBigger,
+                    lineHeight = 20.sp * isBigger,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
     }
 }

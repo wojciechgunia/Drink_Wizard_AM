@@ -5,12 +5,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import pl.poznan.put.drinkwizard.data.Recipe
+import pl.poznan.put.drinkwizard.data.RecipeDatabase
 import pl.poznan.put.drinkwizard.data.RecipeListItem
 import pl.poznan.put.drinkwizard.data.RecipesDao
-import pl.poznan.put.drinkwizard.data.RecipesDb
 
 class Repository(context: Context): RecipesDao {
-    private val dao = RecipesDb.getInstance(context).recipesDio()
+    private val dao = RecipeDatabase.getInstance(context).recipesDio()
     override suspend fun insertAll(recipes: List<Recipe>) = withContext(Dispatchers.IO) {
         dao.insertAll(recipes)
     }

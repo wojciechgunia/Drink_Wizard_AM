@@ -53,6 +53,13 @@ class MainViewModel(app: Application): AndroidViewModel(app) {
     var resetTimer by mutableStateOf(false)
         private set
 
+    var isSheetOpen by mutableStateOf(false)
+        private set
+
+    fun setWigSheetOpen(visible: Boolean) {
+        isSheetOpen = visible
+    }
+
     fun updateSelectedRecipe(value: String) {
         selectedRecipe = value
     }
@@ -138,7 +145,6 @@ class MainViewModel(app: Application): AndroidViewModel(app) {
             Recipe(name = "Cuba Libre", ingredients = "50 ml rumu; 100 ml coli; sok z ½ limonki", steps = "Do szklanki z lodem wlej rum i sok z limonki; Uzupełnij colą i delikatnie wymieszaj (czas mieszania 20s).", shakingTime = 20, note = "", picture = "cuba_libre"),
         )
         CoroutineScope(viewModelScope.coroutineContext).launch {
-//            repo.clearRecipes()
             if(repo.getRecipesCount() == 0)
             {
                 repo.insertAll(recipes)
