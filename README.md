@@ -1,9 +1,5 @@
 ###
 
-[![en](https://img.shields.io/badge/lang-en-red.svg)](https://github.com/wojciechgunia/Drink_Wizard_AM/blob/main/README-en.md)
-
-###
-
 <h1 align="left">Projekt: Drink Wizard</h1>
 
 ###
