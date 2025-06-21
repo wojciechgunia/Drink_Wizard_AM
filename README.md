@@ -56,3 +56,31 @@ W aplikacji zaimplementowano m.in.:
 </div>
 
 ###
+
+<h2 align="left">Screenshots:</h2>
+
+<h3 align="left">Mobile phones:</h3>
+
+<details>
+  <summary>Splash screen | Lista drinków | Szczegóły grinka | O aplikacji 📱</summary>
+  <img src="screenshots/Mobile1.png" alt="Splash screen | Lista drinków | Szczegóły grinka | O aplikacji"/>
+</details>
+
+<details>
+  <summary>Timer ⏰</summary>
+  <img src="screenshots/Mobile2.png" alt="Timer"/>
+</details>
+
+<h3 align="left">Tablets:</h3>
+
+<details>
+  <summary>Splash screen 🔁</summary>
+  <img src="screenshots/splash_tab.png" alt="Splash screen"/>
+</details>
+
+<details>
+  <summary>Lista drinków 🍹</summary>
+  <img src="screenshots/Main_tab1.png" alt="Lista drinków 1"/>
+  <img src="screenshots/Main_tab2.png" alt="Lista drinków 2"/>
+  <img src="screenshots/Main_tab3.png" alt="Lista drinków 3"/>
+</details>
